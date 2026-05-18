@@ -16,8 +16,11 @@ _KB: dict[str, str] = {
 }
 
 
-def search_knowledge_base(query: str) -> dict:
-    q = query.lower()
+def search_knowledge_base(query: str | dict) -> dict:
+    # some models pass {"query": "..."} as a nested object instead of a plain string
+    if isinstance(query, dict):
+        query = query.get("query", "")
+    q = str(query).lower()
     results = [
         {"topic": topic, "answer": answer}
         for topic, answer in _KB.items()

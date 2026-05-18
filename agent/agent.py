@@ -1,6 +1,7 @@
 """Support agent: ReAct loop over Ollama using the OpenAI-compatible API."""
 
 import json
+import os
 from openai import OpenAI
 from agent.tools import TOOL_SCHEMAS, dispatch
 
@@ -21,8 +22,14 @@ OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 
 class SupportAgent:
-    def __init__(self, model: str = DEFAULT_MODEL, base_url: str = OLLAMA_BASE_URL):
-        self._client = OpenAI(base_url=base_url, api_key="ollama")
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+    ):
+        model = model or os.environ.get("MODEL", DEFAULT_MODEL)
+        base_url = base_url or os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
+        self._client = OpenAI(base_url=base_url, api_key="ollama")  # api_key required by SDK but unused by Ollama
         self._model = model
         self._messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.escalated = False

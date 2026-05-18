@@ -16,21 +16,34 @@ The agent keeps a conversation history and loops until it produces a final answe
    - `escalate_to_human` — creates a ticket and hands off to a human
 4. Loop continues until a final text response is produced or escalation completes
 
-## Prerequisites
+## Running with Docker (recommended)
 
-Install and start [Ollama](https://ollama.com), then pull a model:
+Everything — the agent and Ollama — runs as containers. No local Python or Ollama install needed.
+
+```bash
+# 1. Start both containers (pulls Ollama image automatically)
+docker compose up -d
+
+# 2. Pull a model into the Ollama sidecar (one-time)
+docker compose exec ollama ollama pull llama3.2
+
+# 3. Chat with the agent
+docker compose run --rm agent
+
+# Use a different model
+MODEL=mistral docker compose run --rm agent
+```
+
+The `ollama_data` volume persists downloaded models between restarts.
+
+## Running locally (without Docker)
+
+Install and start [Ollama](https://ollama.com), then:
 
 ```bash
 ollama pull llama3.2
-```
 
-## Quickstart
-
-```bash
-# Install dependencies
 poetry install
-
-# Run the interactive CLI
 poetry run support-agent
 
 # Use a different model

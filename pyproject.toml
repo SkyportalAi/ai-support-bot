@@ -8,7 +8,9 @@ packages = [{ include = "agent" }]
 
 [tool.poetry.dependencies]
 python = "^3.11"
-openai = "^1.30"   # used as Ollama client via OpenAI-compatible API
+openai = "^1.30"
+fastapi = "^0.111"
+uvicorn = {extras = ["standard"], version = "^0.30"}
 
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.4"

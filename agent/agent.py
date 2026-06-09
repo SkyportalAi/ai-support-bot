@@ -28,7 +28,7 @@ class SupportAgent:
     ):
         model = model or os.environ.get("MODEL", DEFAULT_MODEL)
         base_url = base_url or os.environ.get("VLLM_BASE_URL", VLLM_BASE_URL)
-        self._client = OpenAI(base_url=base_url, api_key="none")
+        self._client = OpenAI(base_url=base_url)
         self._model = model
         self._messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.escalated = False

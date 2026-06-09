@@ -6,3 +6,4 @@ metadata:
 data:
   VLLM_BASE_URL: {{ .Values.vllm.baseUrl | quote }}
   MODEL: {{ .Values.vllm.model | quote }}
+  OPENAI_API_KEY: "none"

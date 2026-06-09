@@ -6,3 +6,4 @@ services:
     environment:
       - VLLM_BASE_URL=http://host.docker.internal:8000/v1
       - MODEL=meta-llama/Llama-3.1-8B-Instruct
+      - OPENAI_API_KEY=none

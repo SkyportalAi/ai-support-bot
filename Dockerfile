@@ -8,10 +8,11 @@ RUN pip install poetry==1.8.3 && \
 COPY pyproject.toml poetry.lock* ./
 RUN poetry install --no-interaction --no-ansi --only main
 
+RUN addgroup --system app && adduser --system --ingroup app app
+
 COPY agent/ ./agent/
 COPY static/ ./static/
 
-ENV OLLAMA_BASE_URL=http://ollama:11434/v1
-
+USER app
 EXPOSE 8000
 CMD ["uvicorn", "agent.server:app", "--host", "0.0.0.0", "--port", "8000"]

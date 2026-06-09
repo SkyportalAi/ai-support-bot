@@ -1,0 +1,29 @@
+image:
+  repository: vllm/vllm-openai
+  tag: v0.5.0
+  pullPolicy: IfNotPresent
+
+model:
+  name: "meta-llama/Llama-3.1-8B-Instruct"
+
+vllm:
+  # Safe baseline for T4 16GB — do not raise both together (KV cache saturation)
+  maxModelLen: 8192
+  maxNumSeqs: 12
+  gpuMemoryUtilization: "0.90"
+  dtype: "float16"
+  apiKey: "placeholder"
+
+service:
+  type: ClusterIP
+  port: 8000
+
+resources:
+  requests:
+    cpu: "4"
+    memory: "16Gi"
+    nvidia.com/gpu: "1"
+  limits:
+    cpu: "8"
+    memory: "24Gi"
+    nvidia.com/gpu: "1"

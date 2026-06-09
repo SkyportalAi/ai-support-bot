@@ -2,10 +2,12 @@ PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 CLUSTER    ?= skyportal-autopilot
 REGION     ?= us-central1
 MODEL      ?= meta-llama/Llama-3.1-8B-Instruct
+IMAGE_URL  ?= $(REGION)-docker.pkg.dev/$(PROJECT_ID)/ai-support-bot/ai-support-bot
 
 .PHONY: help auth setup dev dev-vllm dev-agent \
         tf-init tf-plan tf-apply tf-migrate tf-destroy \
-        deploy-vllm deploy-agent deploy \
+        build push build-push \
+        deploy-vllm deploy-agent deploy deploy-bad deploy-good \
         logs logs-kv status \
         _gke-creds _require-project _logs
 
@@ -19,6 +21,7 @@ help:
 	@echo "  setup        Install gcloud, Python 3.12, poetry deps, vllm-metal"
 	@echo "  dev          Start vLLM (Metal GPU) + agent container"
 	@echo "  dev-vllm     Start vLLM only"
+	@echo "  dev-logs     Start vLLM + stream logs to GCS bucket"
 	@echo "  dev-agent    Start agent container only"
 	@echo ""
 	@echo "Infrastructure:"
@@ -28,10 +31,17 @@ help:
 	@echo "  tf-migrate   migrate local state to GCS backend (pass 2, run once)"
 	@echo "  tf-destroy   terraform destroy"
 	@echo ""
+	@echo "Build & push:"
+	@echo "  build        Docker build the agent image"
+	@echo "  push         Push agent image to Artifact Registry"
+	@echo "  build-push   build + push"
+	@echo ""
 	@echo "Deploy:"
-	@echo "  deploy-vllm  Helm upgrade vLLM on GKE"
+	@echo "  deploy-vllm  Helm upgrade vLLM on GKE (baseline config)"
 	@echo "  deploy-agent Helm upgrade ai-support-bot on GKE"
-	@echo "  deploy       Deploy both"
+	@echo "  deploy       build-push + deploy both (full local deploy)"
+	@echo "  deploy-bad   Trigger KV cache regression (maxModelLen=16384, maxNumSeqs=24)"
+	@echo "  deploy-good  Revert to baseline config (maxModelLen=8192, maxNumSeqs=12)"
 	@echo ""
 	@echo "Observability:"
 	@echo "  logs         Tail vLLM logs from Cloud Logging"
@@ -54,6 +64,9 @@ dev:
 
 dev-vllm:
 	bash scripts/dev.sh vllm
+
+dev-logs:
+	bash scripts/dev.sh dev-logs
 
 dev-agent:
 	bash scripts/dev.sh agent
@@ -78,6 +91,17 @@ tf-migrate: _require-project
 		> infra/terraform/backend.tf
 	terraform -chdir=infra/terraform init -migrate-state -force-copy
 
+# ── Build & push ─────────────────────────────────────────────────────────────
+
+build: _require-project
+	docker build -t "$(IMAGE_URL):latest" .
+
+push: _require-project
+	gcloud auth configure-docker $(REGION)-docker.pkg.dev --quiet
+	docker push "$(IMAGE_URL):latest"
+
+build-push: build push
+
 # ── Deploy ────────────────────────────────────────────────────────────────────
 
 _gke-creds: _require-project
@@ -91,14 +115,29 @@ deploy-vllm:
 		--create-namespace \
 		--wait
 
-deploy-agent:
+deploy-bad:
+	helm upgrade vllm helm/vllm \
+		--namespace vllm \
+		--set vllm.maxModelLen=16384 \
+		--set vllm.maxNumSeqs=24 \
+		--wait
+
+deploy-good:
+	helm upgrade vllm helm/vllm \
+		--namespace vllm \
+		--set vllm.maxModelLen=8192 \
+		--set vllm.maxNumSeqs=12 \
+		--wait
+
+deploy-agent: _require-project
 	helm upgrade --install ai-support-bot helm/ai-support-bot \
 		--namespace ai-support-bot \
 		--create-namespace \
+		--set image.repository="$(IMAGE_URL)" \
 		--set vllm.baseUrl="http://vllm.vllm.svc.cluster.local:8000/v1" \
 		--wait
 
-deploy: _require-project _gke-creds deploy-vllm deploy-agent
+deploy: _require-project _gke-creds build-push deploy-vllm deploy-agent
 
 # ── Observability ─────────────────────────────────────────────────────────────
 

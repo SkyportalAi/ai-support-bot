@@ -36,6 +36,14 @@ setup() {
     echo "Python 3.12 already installed — skipping"
   fi
 
+  header "Installing kubectl, gke-gcloud-auth-plugin and helm"
+  gcloud components install kubectl gke-gcloud-auth-plugin --quiet
+  if ! command -v helm &>/dev/null; then
+    brew install helm
+  else
+    echo "helm already installed — skipping"
+  fi
+
   header "Installing project dependencies"
   poetry env use python3.12
   poetry install
@@ -81,9 +89,33 @@ start_agent() {
   docker compose up --build
 }
 
+ship_logs_to_gcs() {
+  BUCKET="${VLLM_LOGS_BUCKET:-$(gcloud config get-value project 2>/dev/null)-vllm-logs}"
+  LOG_FILE="/tmp/vllm-local-$(date +%Y%m%d-%H%M%S).log"
+  header "Starting vLLM — logs → $LOG_FILE → gs://$BUCKET"
+  VLLM_PYTHON="${HOME}/.venv-vllm-metal/bin/python"
+  if [[ ! -x "$VLLM_PYTHON" ]]; then
+    echo "ERROR: vllm-metal venv not found. Run: make setup"; exit 1
+  fi
+  "$VLLM_PYTHON" -m vllm.entrypoints.openai.api_server \
+    --model "$MODEL" \
+    --dtype float16 \
+    --max-model-len 8192 \
+    --max-num-seqs 12 \
+    --host 0.0.0.0 \
+    --port 8000 2>&1 | tee "$LOG_FILE" &
+  VLLM_PID=$!
+
+  # Upload log file to GCS on exit
+  trap "echo 'Uploading logs to GCS...'; gsutil cp '$LOG_FILE' gs://$BUCKET/local/$(basename $LOG_FILE); echo 'Done: gs://$BUCKET/local/$(basename $LOG_FILE)'; kill $VLLM_PID 2>/dev/null" EXIT INT TERM
+
+  wait $VLLM_PID
+}
+
 case "$CMD" in
-  setup) setup ;;
-  vllm)  start_vllm ;;
+  setup)    setup ;;
+  vllm)     start_vllm ;;
+  dev-logs) ship_logs_to_gcs ;;
   agent) start_agent ;;
   all)
     start_vllm &

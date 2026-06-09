@@ -112,8 +112,7 @@ _gke-creds: _require-project
 deploy-vllm:
 	helm upgrade --install vllm helm/vllm \
 		--namespace vllm \
-		--create-namespace \
-		--wait
+		--create-namespace
 
 deploy-bad:
 	helm upgrade vllm helm/vllm \

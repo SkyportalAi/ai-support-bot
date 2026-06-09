@@ -16,10 +16,20 @@ spec:
         app: {{ .Release.Name }}
     spec:
       nodeSelector:
-        cloud.google.com/gke-accelerator: nvidia-tesla-t4
+        cloud.google.com/gke-accelerator: nvidia-l4
+        cloud.google.com/gke-spot: "true"
       tolerations:
         - key: "nvidia.com/gpu"
           operator: "Exists"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/gke-accelerator"
+          value: "nvidia-l4"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/machine-family"
+          operator: "Exists"
+          effect: "NoSchedule"
+        - key: "cloud.google.com/gke-spot"
+          value: "true"
           effect: "NoSchedule"
       securityContext:
         runAsNonRoot: true

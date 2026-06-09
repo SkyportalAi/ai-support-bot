@@ -12,9 +12,10 @@ locals {
     "storage.googleapis.com",
   ])
 
-  # Shared baseline for all GCS buckets in this project
+  # Shared baseline for all GCS buckets — uses storage_region, not cluster region,
+  # so buckets survive cluster region changes without destroy/recreate
   bucket_defaults = {
-    location                    = var.region
+    location                    = var.storage_region
     force_destroy               = false
     uniform_bucket_level_access = true
     public_access_prevention    = "enforced"

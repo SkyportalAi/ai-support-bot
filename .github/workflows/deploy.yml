@@ -51,5 +51,4 @@ jobs:
             --set image.repository="${IMAGE_URL}" \
             --set image.tag="${GITHUB_SHA}" \
             --set vllm.baseUrl="${{ secrets.VLLM_BASE_URL }}" \
-            --set vllm.apiKey="${{ secrets.VLLM_API_KEY }}" \
             --wait

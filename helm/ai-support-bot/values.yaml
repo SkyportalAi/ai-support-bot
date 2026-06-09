@@ -10,7 +10,6 @@ image:
 vllm:
   # Set to your vLLM service: kubectl get svc -A | grep vllm
   baseUrl: "http://vllm.vllm.svc.cluster.local:8000/v1"
-  apiKey: "placeholder"
   model: "meta-llama/Llama-3.1-8B-Instruct"
 
 service:

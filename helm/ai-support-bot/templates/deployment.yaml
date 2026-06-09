@@ -41,11 +41,6 @@ spec:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-config
                   key: MODEL
-            - name: VLLM_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Release.Name }}-secret
-                  key: VLLM_API_KEY
           readinessProbe:
             httpGet:
               path: /

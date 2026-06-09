@@ -12,7 +12,6 @@ vllm:
   maxNumSeqs: 12
   gpuMemoryUtilization: "0.90"
   dtype: "float16"
-  apiKey: "placeholder"
 
 service:
   type: ClusterIP

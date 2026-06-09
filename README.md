@@ -65,7 +65,6 @@ Add these in GitHub → Settings → Secrets → Actions:
 - `GKE_CLUSTER_NAME` — `skyportal-autopilot`
 - `GKE_CLUSTER_ZONE` — `us-central1`
 - `VLLM_BASE_URL` — `http://vllm.vllm.svc.cluster.local:8000/v1`
-- `VLLM_API_KEY` — if vLLM has auth enabled
 
 After the first push to `main`, GitHub Actions builds the image and deploys automatically.
 

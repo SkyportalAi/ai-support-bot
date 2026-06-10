@@ -4,12 +4,15 @@ REGION     ?= us-east1
 MODEL      ?= microsoft/Phi-3-mini-4k-instruct
 IMAGE_URL  ?= $(REGION)-docker.pkg.dev/$(PROJECT_ID)/ai-support-bot/ai-support-bot
 
-.PHONY: help auth setup dev dev-vllm dev-agent \
+.PHONY: help auth setup dev dev-vllm dev-bad dev-good dev-agent \
         tf-init tf-plan tf-apply tf-migrate tf-destroy \
         build push build-push \
         deploy-vllm deploy-agent deploy deploy-bad deploy-good \
-        deploy-hyperstack-vllm \
-        logs logs-kv status status-hyperstack \
+        deploy-hyperstack-vllm deploy-hyperstack-bad deploy-hyperstack-good \
+        logs logs-kv \
+        logs-hyperstack logs-hyperstack-kv logs-hyperstack-requests \
+        load-local load-hyperstack \
+        status status-hyperstack \
         _gke-creds _require-project _logs
 
 help:
@@ -21,7 +24,9 @@ help:
 	@echo "Local dev:"
 	@echo "  setup        Install gcloud, Python 3.12, poetry deps, vllm-metal"
 	@echo "  dev          Start vLLM (Metal GPU) + agent container"
-	@echo "  dev-vllm     Start vLLM only"
+	@echo "  dev-vllm     Start vLLM only (baseline: maxNumSeqs=16)"
+	@echo "  dev-bad      Start vLLM with regression config (maxNumSeqs=32)"
+	@echo "  dev-good     Start vLLM with baseline config (maxNumSeqs=16)"
 	@echo "  dev-logs     Start vLLM + stream logs to GCS bucket"
 	@echo "  dev-agent    Start agent container only"
 	@echo ""
@@ -43,12 +48,22 @@ help:
 	@echo "  deploy                build-push + deploy both (full local deploy)"
 	@echo "  deploy-bad            Trigger KV cache regression (maxModelLen=16384, maxNumSeqs=24)"
 	@echo "  deploy-good           Revert to baseline config (maxModelLen=8192, maxNumSeqs=12)"
-	@echo "  deploy-hyperstack-vllm Helm upgrade vLLM on Hyperstack (Phi-3-mini, A4000)"
+	@echo "  deploy-hyperstack-vllm  Helm upgrade vLLM on Hyperstack (Phi-3-mini, A4000)"
+	@echo "  deploy-hyperstack-bad   Trigger KV cache regression (maxModelLen=4096, maxNumSeqs=32)"
+	@echo "  deploy-hyperstack-good  Revert to baseline config (maxModelLen=4096, maxNumSeqs=16)"
 	@echo ""
 	@echo "Observability:"
-	@echo "  logs         Tail vLLM logs from Cloud Logging"
-	@echo "  logs-kv      Tail KV cache stat lines only"
-	@echo "  status       Show pod status in both namespaces"
+	@echo "  logs                    Tail vLLM logs from Cloud Logging (GKE)"
+	@echo "  logs-kv                 Tail KV cache stat lines only (GKE)"
+	@echo "  logs-hyperstack         Stream all vLLM logs (Hyperstack, live)"
+	@echo "  logs-hyperstack-kv      Stream KV cache stat lines only (Hyperstack)"
+	@echo "  logs-hyperstack-requests Stream request/response lines only (Hyperstack)"
+	@echo "  status                  Show pod status in both namespaces (GKE)"
+	@echo "  status-hyperstack       Show pod status in both namespaces (Hyperstack)"
+	@echo ""
+	@echo "Load testing:"
+	@echo "  load-local              Fire 16 parallel /chat requests at localhost:8080"
+	@echo "  load-hyperstack         Fire 16 parallel /chat requests via port-forward"
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
@@ -66,6 +81,12 @@ dev:
 
 dev-vllm:
 	bash scripts/dev.sh vllm
+
+dev-bad:
+	MAX_NUM_SEQS=32 bash scripts/dev.sh vllm
+
+dev-good:
+	MAX_NUM_SEQS=16 bash scripts/dev.sh vllm
 
 dev-logs:
 	bash scripts/dev.sh dev-logs
@@ -137,6 +158,22 @@ deploy-hyperstack-vllm:
 		--set nodeSelector=null \
 		-f hyperstack/vllm-values.yaml
 
+deploy-hyperstack-bad:
+	KUBECONFIG=hyperstack/kubeconfig.yaml helm upgrade vllm helm/vllm \
+		--namespace vllm \
+		--set nodeSelector=null \
+		-f hyperstack/vllm-values.yaml \
+		--set vllm.maxModelLen=4096 \
+		--set vllm.maxNumSeqs=32
+
+deploy-hyperstack-good:
+	KUBECONFIG=hyperstack/kubeconfig.yaml helm upgrade vllm helm/vllm \
+		--namespace vllm \
+		--set nodeSelector=null \
+		-f hyperstack/vllm-values.yaml \
+		--set vllm.maxModelLen=4096 \
+		--set vllm.maxNumSeqs=16
+
 deploy-agent: _require-project
 	helm upgrade --install ai-support-bot helm/ai-support-bot \
 		--namespace ai-support-bot \
@@ -162,6 +199,21 @@ logs:
 
 logs-kv:
 	$(MAKE) _logs LOG_FILTER='AND textPayload=~"GPU KV cache usage"'
+
+logs-hyperstack:
+	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl logs -n vllm -l app=vllm -f --tail=50
+
+logs-hyperstack-kv:
+	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl logs -n vllm -l app=vllm -f --tail=0 | grep --line-buffered "GPU KV cache"
+
+logs-hyperstack-requests:
+	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl logs -n vllm -l app=vllm -f --tail=0 | grep --line-buffered "Received request\|Finished request\|POST /v1"
+
+load-local:
+	AGENT_URL=http://localhost:8080 CONCURRENCY=16 bash scripts/load.sh
+
+load-hyperstack:
+	AGENT_URL=http://localhost:8080 CONCURRENCY=16 bash scripts/load.sh
 
 status:
 	kubectl get pods -n vllm

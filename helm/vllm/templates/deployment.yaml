@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      tolerations:
+        - key: "nvidia.com/gpu"
+          operator: "Exists"
+          effect: "NoSchedule"
+        {{- with .Values.extraTolerations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: vllm
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # readOnlyRootFilesystem omitted — vLLM writes model cache and temp files at runtime
+          env:
+            - name: HOME
+              value: /tmp
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: NUMBA_CACHE_DIR
+              value: /tmp/numba_cache
+          command:
+            - python3
+            - -m
+            - vllm.entrypoints.openai.api_server
+            - --model={{ .Values.model.name }}
+            - --dtype={{ .Values.vllm.dtype }}
+            - --max-model-len={{ .Values.vllm.maxModelLen }}
+            - --max-num-seqs={{ .Values.vllm.maxNumSeqs }}
+            - --gpu-memory-utilization={{ .Values.vllm.gpuMemoryUtilization }}
+            - --host=0.0.0.0
+            - --port=8000
+          ports:
+            - containerPort: 8000
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 42
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

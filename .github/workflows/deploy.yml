@@ -1,0 +1,54 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ secrets.GKE_CLUSTER_NAME }}
+  GKE_ZONE: ${{ secrets.GKE_CLUSTER_ZONE }}
+  IMAGE: ai-support-bot
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push image
+        run: |
+          REGION="${GKE_ZONE%-*}"
+          IMAGE_URL="${REGION}-docker.pkg.dev/${PROJECT_ID}/ai-support-bot/${IMAGE}"
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev"
+          docker build -t "${IMAGE_URL}:${GITHUB_SHA}" -t "${IMAGE_URL}:latest" .
+          docker push "${IMAGE_URL}:${GITHUB_SHA}"
+          docker push "${IMAGE_URL}:latest"
+          echo "IMAGE_URL=${IMAGE_URL}" >> "$GITHUB_ENV"
+
+      - uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Deploy ai-support-bot
+        run: |
+          helm upgrade --install ai-support-bot helm/ai-support-bot \
+            --namespace ai-support-bot \
+            --create-namespace \
+            --set image.repository="${IMAGE_URL}" \
+            --set image.tag="${GITHUB_SHA}" \
+            --set vllm.baseUrl="${{ secrets.VLLM_BASE_URL }}" \
+            --wait

@@ -5,8 +5,8 @@ from agent.agent import SupportAgent, DEFAULT_MODEL
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="SkyPortal AI Support Agent (Ollama)")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Ollama model name (default: llama3.2)")
+    parser = argparse.ArgumentParser(description="SkyPortal AI Support Agent (vLLM)")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="vLLM model name")
     args = parser.parse_args()
 
     print(f"SkyPortal Support Agent [{args.model}]")

@@ -1,0 +1,25 @@
+# Overrides helm/vllm/values.yaml for Hyperstack — replaces GKE-specific nodeSelector
+model:
+  name: "microsoft/Phi-3-mini-4k-instruct"
+
+nodeSelector:
+  has_gpu: "True"
+
+extraTolerations: []
+
+vllm:
+  # Phi-3-mini has 3.8B params (~7.6GB at float16), leaving ~6GB for KV cache on A4000
+  maxModelLen: 4096
+  maxNumSeqs: 16
+  gpuMemoryUtilization: "0.90"
+  dtype: "float16"
+
+resources:
+  requests:
+    cpu: "4"
+    memory: "16Gi"
+    nvidia.com/gpu: "1"
+  limits:
+    cpu: "4"
+    memory: "20Gi"
+    nvidia.com/gpu: "1"

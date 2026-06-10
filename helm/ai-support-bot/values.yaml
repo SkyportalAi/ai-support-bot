@@ -1,0 +1,26 @@
+replicaCount: 1
+
+image:
+  # Set to your Artifact Registry URL after terraform apply:
+  # us-central1-docker.pkg.dev/<PROJECT_ID>/ai-support-bot/ai-support-bot
+  repository: us-central1-docker.pkg.dev/PROJECT_ID/ai-support-bot/ai-support-bot
+  tag: latest
+  pullPolicy: Always
+
+vllm:
+  # Set to your vLLM service: kubectl get svc -A | grep vllm
+  baseUrl: "http://vllm.vllm.svc.cluster.local:8000/v1"
+  model: "meta-llama/Llama-3.1-8B-Instruct"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+resources:
+  requests:
+    cpu: "250m"
+    memory: "256Mi"
+  limits:
+    cpu: "500m"
+    memory: "512Mi"

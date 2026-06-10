@@ -1,28 +1,12 @@
 services:
-  ollama:
-    image: ollama/ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   agent:
     build: .
     ports:
       - "8080:8000"
-    depends_on:
-      ollama:
-        condition: service_healthy
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434/v1
-      - MODEL=${MODEL:-llama3.2:3b}
-
-volumes:
-  ollama_data:
+      - VLLM_BASE_URL=http://host.docker.internal:8001/v1
+      - MODEL=microsoft/Phi-3-mini-4k-instruct
+      - OPENAI_API_KEY=none
+      - METRICS_FILE=/logs/kv-metrics.jsonl
+    volumes:
+      - ./logs:/logs

@@ -1,6 +1,5 @@
-"""Support agent: ReAct loop over Ollama using the OpenAI-compatible API."""
+"""Support agent: ReAct loop over vLLM using the OpenAI-compatible API."""
 
-import json
 import os
 from openai import OpenAI
 from agent.tools import TOOL_SCHEMAS, dispatch
@@ -15,10 +14,16 @@ Steps to follow:
    - The user is frustrated or explicitly asks for a human.
    - The issue involves billing, refunds, or account security.
 
+If the user reports slow responses, high latency, or the system feeling sluggish:
+- Call get_vllm_metrics to check KV cache utilisation and pending request count.
+- If gpu_kv_pct > 50% or pending > 0, diagnose it as KV cache saturation.
+- Explain that a recent config change (higher max_num_seqs) is likely the cause.
+- Recommend reverting to the baseline config (maxNumSeqs=16).
+
 Be concise and empathetic. If you escalate, give the user their ticket ID."""
 
-DEFAULT_MODEL = "llama3.2"
-OLLAMA_BASE_URL = "http://localhost:11434/v1"
+DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+VLLM_BASE_URL = "http://vllm-service.default.svc.cluster.local:8000/v1"
 
 
 class SupportAgent:
@@ -28,8 +33,8 @@ class SupportAgent:
         base_url: str | None = None,
     ):
         model = model or os.environ.get("MODEL", DEFAULT_MODEL)
-        base_url = base_url or os.environ.get("OLLAMA_BASE_URL", OLLAMA_BASE_URL)
-        self._client = OpenAI(base_url=base_url, api_key="ollama")  # api_key required by SDK but unused by Ollama
+        base_url = base_url or os.environ.get("VLLM_BASE_URL", VLLM_BASE_URL)
+        self._client = OpenAI(base_url=base_url)
         self._model = model
         self._messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
         self.escalated = False
@@ -45,7 +50,6 @@ class SupportAgent:
                 model=self._model,
                 messages=self._messages,
                 tools=TOOL_SCHEMAS,
-                tool_choice="auto",
             )
 
             msg = response.choices[0].message

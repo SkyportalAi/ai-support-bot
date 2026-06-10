@@ -4,3 +4,14 @@ __pycache__/
 .pytest_cache/
 dist/
 .venv/
+
+# Terraform
+infra/terraform/.terraform/
+infra/terraform/*.tfstate
+infra/terraform/*.tfstate.backup
+infra/terraform/backend.tf
+
+# Hyperstack
+hyperstack/kubeconfig.yaml
+logs/*.jsonl
+logs/*.log

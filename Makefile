@@ -216,10 +216,10 @@ load-local:
 	AGENT_URL=http://localhost:8080 CONCURRENCY=16 bash scripts/load.sh
 
 load-direct:
-	VLLM_URL=http://localhost:8001 CONCURRENCY=32 bash scripts/load-direct.sh
+	VLLM_URL=http://localhost:8001 CONCURRENCY=128 MAX_TOKENS=2048 bash scripts/load-direct.sh
 
 load-direct-heavy:
-	VLLM_URL=http://localhost:8001 CONCURRENCY=64 bash scripts/load-direct.sh
+	VLLM_URL=http://localhost:8001 CONCURRENCY=256 MAX_TOKENS=2048 bash scripts/load-direct.sh
 
 load-hyperstack:
 	AGENT_URL=http://localhost:8080 CONCURRENCY=16 bash scripts/load.sh

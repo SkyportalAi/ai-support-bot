@@ -10,24 +10,24 @@
 set -euo pipefail
 
 VLLM_URL="${VLLM_URL:-http://localhost:8001}"
-CONCURRENCY="${CONCURRENCY:-32}"
+CONCURRENCY="${CONCURRENCY:-128}"
 KUBECONFIG="${KUBECONFIG:-hyperstack/kubeconfig.yaml}"
 METRICS_FILE="${METRICS_FILE:-logs/kv-metrics.jsonl}"
 MODEL="microsoft/Phi-3-mini-4k-instruct"
+MAX_TOKENS="${MAX_TOKENS:-2048}"
 ROUND=0
 
 mkdir -p "$(dirname "$METRICS_FILE")"
 
-# Long system prompt + user message to consume as many KV blocks as possible
-SYSTEM="You are a senior SkyPortal support engineer. A customer has filed a detailed incident report describing cascading failures across their GPU cluster. Analyse the situation thoroughly, identify all root causes, list every affected component, propose a remediation plan with step-by-step instructions, estimate recovery time, and draft a post-incident review summary."
+# Prompt engineered to produce very long outputs — fills KV blocks for longer
+SYSTEM="You are a senior SkyPortal infrastructure engineer writing exhaustive post-incident reports. For every incident you must: (1) list every possible root cause with full technical explanation, (2) describe the blast radius across all systems, (3) write a complete step-by-step remediation runbook with exact commands, (4) propose 10 specific preventive measures with implementation details, (5) draft a full timeline of events, (6) write a customer-facing incident summary. Be extremely detailed and verbose in every section. Do not summarise — expand every point fully."
 
-MESSAGES=(
-  "Since yesterday afternoon our entire GPU fleet has been unreachable. We have 48 A100 nodes across three availability zones. The monitoring dashboard shows all nodes as offline but our billing is still running. SSH connections time out after 30 seconds with no error. The last thing we did before the outage was apply a routine OS patch via our config management system. We have a production ML training job that was at 94% completion and we cannot afford to restart it from scratch. Please help us understand what happened, how to recover the nodes without losing the checkpoint, and what we need to do to prevent this in future."
-  "We are processing financial transactions through our inference API and we have noticed that since last Tuesday response times have increased from an average of 800ms to over 6 seconds. Our SLA requires sub-second responses. We have not changed our model or infrastructure. The only change was that our DevOps team increased the max_num_seqs parameter in the vLLM config from 12 to 32 to handle more concurrent users. Transaction volume has also increased 3x since we launched a new product last week. We need to understand if these two things are related and what the fastest path to recovery is without taking the service down."
-  "Our data science team accidentally deleted the production model weights from our shared storage last night. We have backups from 3 days ago but we have done 2 days of fine-tuning since then that is not backed up anywhere. The fine-tuning runs were logged to our experiment tracker but the actual checkpoint files are gone. Is there any way to recover the lost checkpoints? What should we do right now? We have a board demo in 18 hours that depends on this model."
-  "We are getting CUDA out of memory errors on all our inference nodes simultaneously. The error is: RuntimeError: CUDA out of memory. Tried to allocate 2.50 GiB with 1.23 GiB left. This started happening after we deployed a new version of our application that sends longer prompts to the model. Our GPU nodes have 80GB of VRAM each and this was never a problem before. The application is serving 400 concurrent users and we cannot restart it during business hours. What are our options?"
-  "Three of our kubernetes nodes are stuck in NotReady state after a cluster upgrade from 1.27 to 1.28. The upgrade was done by our cloud provider's managed service. The nodes show the following in kubectl describe: container runtime network not ready: NetworkReady=false reason:NetworkPluginNotReady message:Network plugin returns error: cni plugin not initialized. We have 47 other nodes that are fine. The affected nodes are running our vLLM inference workloads and we have active user sessions that will be dropped if we drain them."
-)
+# Repeat each message body to push prompt tokens near the 4096 context limit
+MSG1="Since yesterday afternoon our entire GPU fleet has been unreachable. We have 48 A100 nodes across three availability zones. The monitoring dashboard shows all nodes as offline but our billing is still running. SSH connections time out after 30 seconds with no error. The last thing we did before the outage was apply a routine OS patch via our config management system. We have a production ML training job that was at 94% completion and we cannot afford to restart it from scratch. Please help us understand what happened, how to recover the nodes without losing the checkpoint, and what we need to do to prevent this in future. Additional context: the patch was kernel 5.15.0-91-generic applied via apt-get upgrade. The config management system is Ansible. The training job is a distributed PyTorch run using NCCL. The checkpoint files are on a shared NFS mount. The NFS mount is still accessible from our bastion host. The GPU nodes are NVIDIA A100 SXM4 80GB. The cluster is managed by Kubernetes 1.27."
+MSG2="We are processing financial transactions through our inference API and response times have increased from 800ms to over 6 seconds since Tuesday. Our SLA requires sub-second responses. The only change was increasing max_num_seqs from 12 to 32 in vLLM config to handle more concurrent users. Transaction volume also increased 3x since our new product launch last week. We need to understand if these are related and what the fastest path to recovery is without downtime. Additional context: we are running vLLM 0.5.0 on NVIDIA A4000 GPUs with 16GB VRAM. The model is Phi-3-mini-4k-instruct at float16. Our p99 latency SLA is 1000ms. We currently have 400 concurrent users. Each request averages 800 input tokens and 200 output tokens. The KV cache is showing 95% utilisation in our monitoring."
+MSG3="Our data science team accidentally deleted the production model weights from shared storage last night. We have backups from 3 days ago but 2 days of fine-tuning since then is not backed up. The fine-tuning runs were logged to our MLflow experiment tracker but actual checkpoint files are gone. We have a board demo in 18 hours. Additional context: the model was fine-tuned from Phi-3-mini-4k-instruct base. We ran 3 fine-tuning runs over 2 days. Each run was approximately 8 hours on 4x A100 GPUs. The experiment tracker has all hyperparameters, loss curves, and evaluation metrics. The storage system is a Ceph cluster. The deletion was accidental rm -rf on the wrong directory. We do not have versioning enabled on the storage bucket."
+
+MESSAGES=("$MSG1" "$MSG2" "$MSG3")
 
 fire_one() {
   local msg_idx body
@@ -40,7 +40,7 @@ print(json.dumps({
     {'role': 'system', 'content': '''$SYSTEM'''},
     {'role': 'user',   'content': '''${MESSAGES[$msg_idx]}'''}
   ],
-  'max_tokens': 512,
+  'max_tokens': $MAX_TOKENS,
   'temperature': 0.7,
 }))
 ")

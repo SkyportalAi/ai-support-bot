@@ -14,7 +14,10 @@ set -euo pipefail
 AGENT_URL="${AGENT_URL:-http://localhost:8080}"
 CONCURRENCY="${CONCURRENCY:-16}"
 KUBECONFIG="${KUBECONFIG:-hyperstack/kubeconfig.yaml}"
+METRICS_FILE="${METRICS_FILE:-logs/kv-metrics.jsonl}"
 ROUND=0
+
+mkdir -p "$(dirname "$METRICS_FILE")"
 
 MESSAGES=(
   "I have been trying to reset my password for the last three days. Every time I click the reset link it says the link has expired even though I just requested it. I have cleared my cache, tried different browsers, and even a different device. Nothing works. My team is locked out of the platform and we have a deadline tomorrow morning. This is extremely urgent — please help."
@@ -34,13 +37,13 @@ fire_one() {
     "${MESSAGES[$msg_idx]//\"/\\\"}")
 
   local start end elapsed status
-  start=$(date +%s%3N)
+  start=$(python3 -c "import time; print(int(time.time()*1000))")
   status=$(curl -s -o /dev/null -w "%{http_code}" \
     --max-time 120 \
     -X POST "$url" \
     -H "Content-Type: application/json" \
     -d "$body" || echo "000")
-  end=$(date +%s%3N)
+  end=$(python3 -c "import time; print(int(time.time()*1000))")
   elapsed=$(( end - start ))
 
   printf "[load] session=%-36s status=%s latency=%dms\n" \
@@ -53,13 +56,37 @@ export AGENT_URL MESSAGES
 # Stream KV cache metrics from Hyperstack in the background, prefixed with [kv]
 KUBECONFIG="$KUBECONFIG" kubectl logs -n vllm -l app=vllm -f --tail=0 2>/dev/null \
   | grep --line-buffered "GPU KV cache" \
-  | sed -u 's/^.*Avg prompt throughput/[kv] throughput/' \
-  | sed -u 's/GPU KV cache usage:/  gpu_kv=/' \
-  | sed -u 's/CPU KV cache usage:/  cpu_kv=/' \
-  | sed -u 's/Running:/  running=/' \
-  | sed -u 's/Swapped:/  swapped=/' \
-  | sed -u 's/Pending:/  pending=/' \
-  | sed -u 's/Avg generation throughput:/  gen=/' &
+  | python3 -u -c "
+import sys, re, json, time
+
+metrics_file = '$METRICS_FILE'
+
+for line in sys.stdin:
+    ts   = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())
+    run  = re.search(r'Running: (\d+)', line)
+    pend = re.search(r'Pending: (\d+)', line)
+    swap = re.search(r'Swapped: (\d+)', line)
+    gpu  = re.search(r'GPU KV cache usage: ([0-9.]+)%', line)
+    gen  = re.search(r'Avg generation throughput: ([0-9.]+)', line)
+    if not gpu:
+        continue
+
+    record = {
+        'ts': ts,
+        'gpu_kv_pct': float(gpu.group(1)),
+        'running': int(run.group(1)) if run else 0,
+        'pending': int(pend.group(1)) if pend else 0,
+        'swapped': int(swap.group(1)) if swap else 0,
+        'gen_tokens_per_s': float(gen.group(1)) if gen else 0.0,
+    }
+
+    with open(metrics_file, 'a') as f:
+        f.write(json.dumps(record) + '\n')
+
+    pct = record['gpu_kv_pct']
+    flag = '  *** SATURATING ***' if pct > 50 else ''
+    print(f'[kv]  gpu={pct:.1f}%  running={record[\"running\"]}  pending={record[\"pending\"]}{flag}', flush=True)
+" &
 KV_PID=$!
 
 trap "kill $KV_PID 2>/dev/null; exit" INT TERM

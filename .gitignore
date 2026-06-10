@@ -13,3 +13,5 @@ infra/terraform/backend.tf
 
 # Hyperstack
 hyperstack/kubeconfig.yaml
+logs/*.jsonl
+logs/*.log

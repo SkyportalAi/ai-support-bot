@@ -14,6 +14,12 @@ Steps to follow:
    - The user is frustrated or explicitly asks for a human.
    - The issue involves billing, refunds, or account security.
 
+If the user reports slow responses, high latency, or the system feeling sluggish:
+- Call get_vllm_metrics to check KV cache utilisation and pending request count.
+- If gpu_kv_pct > 50% or pending > 0, diagnose it as KV cache saturation.
+- Explain that a recent config change (higher max_num_seqs) is likely the cause.
+- Recommend reverting to the baseline config (maxNumSeqs=16).
+
 Be concise and empathetic. If you escalate, give the user their ticket ID."""
 
 DEFAULT_MODEL = "meta-llama/Llama-3.1-8B-Instruct"

@@ -1,6 +1,7 @@
 """Tool definitions and stub implementations for the support agent."""
 
 import json
+import os
 import uuid
 
 # --- Knowledge base (replace with a real DB/vector store later) ---
@@ -37,6 +38,27 @@ def get_ticket_status(ticket_id: str) -> dict:
     if ticket_id in stub:
         return {"found": True, "ticket_id": ticket_id, **stub[ticket_id]}
     return {"found": False, "ticket_id": ticket_id}
+
+
+def get_vllm_metrics(last_n: int = 10) -> dict:
+    metrics_file = os.environ.get("METRICS_FILE", "logs/kv-metrics.jsonl")
+    if not os.path.exists(metrics_file):
+        return {"error": "No metrics file found. Is the load generator running?", "snapshots": []}
+    with open(metrics_file) as f:
+        lines = f.readlines()
+    snapshots = [json.loads(l) for l in lines[-last_n:] if l.strip()]
+    if not snapshots:
+        return {"error": "Metrics file is empty.", "snapshots": []}
+    latest = snapshots[-1]
+    peak_gpu = max(s["gpu_kv_pct"] for s in snapshots)
+    peak_pending = max(s["pending"] for s in snapshots)
+    return {
+        "snapshots": snapshots,
+        "latest": latest,
+        "peak_gpu_kv_pct": peak_gpu,
+        "peak_pending_requests": peak_pending,
+        "saturating": peak_gpu > 50,
+    }
 
 
 def escalate_to_human(reason: str, summary: str, urgency: str) -> dict:
@@ -86,6 +108,27 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "get_vllm_metrics",
+            "description": (
+                "Read recent vLLM KV cache metrics from the local snapshot file. "
+                "Use this to diagnose latency regressions — look for high gpu_kv_pct "
+                "and pending_requests > 0 which indicate KV cache saturation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "last_n": {
+                        "type": "integer",
+                        "description": "Number of recent snapshots to return (default 10).",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "escalate_to_human",
             "description": (
                 "Escalate to a human agent. Use when: the knowledge base has no answer, "
@@ -111,6 +154,8 @@ def dispatch(name: str, arguments: str) -> str:
         return json.dumps(search_knowledge_base(**args))
     if name == "get_ticket_status":
         return json.dumps(get_ticket_status(**args))
+    if name == "get_vllm_metrics":
+        return json.dumps(get_vllm_metrics(**args))
     if name == "escalate_to_human":
         return json.dumps(escalate_to_human(**args))
     raise ValueError(f"Unknown tool: {name}")

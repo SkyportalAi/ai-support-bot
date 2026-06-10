@@ -11,7 +11,7 @@ IMAGE_URL  ?= $(REGION)-docker.pkg.dev/$(PROJECT_ID)/ai-support-bot/ai-support-b
         deploy-hyperstack-vllm deploy-hyperstack-bad deploy-hyperstack-good \
         logs logs-kv \
         logs-hyperstack logs-hyperstack-kv logs-hyperstack-requests \
-        load-local load-hyperstack \
+        load-local load-direct load-direct-heavy load-hyperstack \
         status status-hyperstack \
         _gke-creds _require-project _logs
 
@@ -63,6 +63,8 @@ help:
 	@echo ""
 	@echo "Load testing:"
 	@echo "  load-local              Fire 16 parallel /chat requests at localhost:8080"
+	@echo "  load-direct             Fire 32 parallel requests direct to vLLM (bypasses agent)"
+	@echo "  load-direct-heavy       Fire 64 parallel requests direct to vLLM"
 	@echo "  load-hyperstack         Fire 16 parallel /chat requests via port-forward"
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
@@ -211,6 +213,12 @@ logs-hyperstack-requests:
 
 load-local:
 	AGENT_URL=http://localhost:8080 CONCURRENCY=16 bash scripts/load.sh
+
+load-direct:
+	VLLM_URL=http://localhost:8001 CONCURRENCY=32 bash scripts/load-direct.sh
+
+load-direct-heavy:
+	VLLM_URL=http://localhost:8001 CONCURRENCY=64 bash scripts/load-direct.sh
 
 load-hyperstack:
 	AGENT_URL=http://localhost:8080 CONCURRENCY=16 bash scripts/load.sh

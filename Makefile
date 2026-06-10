@@ -203,7 +203,8 @@ logs-kv:
 	$(MAKE) _logs LOG_FILTER='AND textPayload=~"GPU KV cache usage"'
 
 logs-hyperstack:
-	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl logs -n vllm -l app=vllm -f --tail=50
+	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl logs -n vllm -l app=vllm -f --tail=50 \
+		| python3 scripts/vllm_logger.py logs/kv-metrics.jsonl
 
 logs-hyperstack-kv:
 	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl logs -n vllm -l app=vllm -f --tail=0 | grep --line-buffered "GPU KV cache"

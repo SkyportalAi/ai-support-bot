@@ -7,6 +7,11 @@ metadata:
     app: {{ .Release.Name }}
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -15,22 +20,18 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      enableServiceLinks: false
+      {{- with .Values.nodeSelector }}
       nodeSelector:
-        cloud.google.com/gke-accelerator: nvidia-l4
-        cloud.google.com/gke-spot: "true"
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       tolerations:
         - key: "nvidia.com/gpu"
           operator: "Exists"
           effect: "NoSchedule"
-        - key: "cloud.google.com/gke-accelerator"
-          value: "nvidia-l4"
-          effect: "NoSchedule"
-        - key: "cloud.google.com/machine-family"
-          operator: "Exists"
-          effect: "NoSchedule"
-        - key: "cloud.google.com/gke-spot"
-          value: "true"
-          effect: "NoSchedule"
+        {{- with .Values.extraTolerations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -44,8 +45,15 @@ spec:
             capabilities:
               drop: ["ALL"]
             # readOnlyRootFilesystem omitted — vLLM writes model cache and temp files at runtime
+          env:
+            - name: HOME
+              value: /tmp
+            - name: HF_HOME
+              value: /tmp/huggingface
+            - name: NUMBA_CACHE_DIR
+              value: /tmp/numba_cache
           command:
-            - python
+            - python3
             - -m
             - vllm.entrypoints.openai.api_server
             - --model={{ .Values.model.name }}

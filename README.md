@@ -34,6 +34,20 @@ bash scripts/dev.sh agent   # just the agent container (port 8080)
 
 Open http://localhost:8080 to chat.
 
+## GCP quota prerequisites
+
+Before deploying, verify these quotas in your target region (Console → IAM & Admin → Quotas & System Limits):
+
+| Quota | Required | Why |
+|-------|----------|-----|
+| `NVIDIA_T4_GPUS` | ≥ 1 | vLLM pod GPU request |
+| `PREEMPTIBLE_CPUS` | ≥ 8 | Required for spot instances — default is **0** on new projects, must be requested manually |
+| `CPUS` | ≥ 8 | Required for standard (non-spot) instances |
+
+To request an increase: Quotas page → filter by metric name → checkbox → **Edit Quota** → set to 24 → submit with justification *"Spot GPU workloads on GKE Autopilot for ML inference"*. Small increases are usually auto-approved within minutes.
+
+> **Note on GPU inventory vs quota**: `GCE quota exceeded` in autoscaler events can mean either quota exhaustion *or* physical inventory shortage — GCP uses the same error for both. If your quota shows `usage=0` but pods stay `Pending`, the zone is out of physical T4 stock. Try a different zone or region.
+
 ## Deploying to GKE
 
 ```bash
@@ -63,10 +77,47 @@ Add these in GitHub → Settings → Secrets → Actions:
 - `GCP_SERVICE_ACCOUNT` — output of `terraform output -raw cicd_service_account`
 - `GCP_PROJECT_ID`
 - `GKE_CLUSTER_NAME` — `skyportal-autopilot`
-- `GKE_CLUSTER_ZONE` — `us-central1`
+- `GKE_CLUSTER_ZONE` — region where you deployed (e.g. `europe-west1`)
 - `VLLM_BASE_URL` — `http://vllm.vllm.svc.cluster.local:8000/v1`
 
 After the first push to `main`, GitHub Actions builds the image and deploys automatically.
+
+## Deploying vLLM on Hyperstack
+
+[Hyperstack](https://www.hyperstack.cloud) is an alternative GPU cloud with better T4/A100 availability than GCP during the current GPU shortage. The vLLM helm chart works unchanged — `vllm/vllm-openai` is a public Docker Hub image, no registry auth needed.
+
+### 1. Create a Kubernetes cluster
+
+In the Hyperstack console, create a Kubernetes cluster with a GPU node pool (T4 or A100). Download the kubeconfig and save it to `hyperstack/kubeconfig.yaml` (gitignored).
+
+### 2. Point kubectl at the cluster
+
+```bash
+export KUBECONFIG=$(pwd)/hyperstack/kubeconfig.yaml
+kubectl get nodes  # verify connection
+```
+
+### 3. Deploy vLLM
+
+```bash
+# Update the nodeSelector in helm/vllm/templates/deployment.yaml
+# to match Hyperstack's GPU label (check: kubectl describe node | grep accelerator)
+
+helm upgrade --install vllm helm/vllm \
+  --namespace vllm \
+  --create-namespace
+```
+
+### 4. Deploy the agent
+
+```bash
+helm upgrade --install ai-support-bot helm/ai-support-bot \
+  --namespace ai-support-bot \
+  --create-namespace \
+  --set vllm.baseUrl="http://vllm.vllm.svc.cluster.local:8000/v1"
+```
+
+> **Note on the nodeSelector**: Hyperstack uses different GPU label values than GKE. Run `kubectl describe node | grep -i accelerator` after the node is up to find the correct label, then update `cloud.google.com/gke-accelerator` in `helm/vllm/templates/deployment.yaml` accordingly.
 
 ## Running tests
 

@@ -1,14 +1,15 @@
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 CLUSTER    ?= skyportal-autopilot
-REGION     ?= us-central1
-MODEL      ?= meta-llama/Llama-3.1-8B-Instruct
+REGION     ?= us-east1
+MODEL      ?= microsoft/Phi-3-mini-4k-instruct
 IMAGE_URL  ?= $(REGION)-docker.pkg.dev/$(PROJECT_ID)/ai-support-bot/ai-support-bot
 
 .PHONY: help auth setup dev dev-vllm dev-agent \
         tf-init tf-plan tf-apply tf-migrate tf-destroy \
         build push build-push \
         deploy-vllm deploy-agent deploy deploy-bad deploy-good \
-        logs logs-kv status \
+        deploy-hyperstack-vllm \
+        logs logs-kv status status-hyperstack \
         _gke-creds _require-project _logs
 
 help:
@@ -37,11 +38,12 @@ help:
 	@echo "  build-push   build + push"
 	@echo ""
 	@echo "Deploy:"
-	@echo "  deploy-vllm  Helm upgrade vLLM on GKE (baseline config)"
-	@echo "  deploy-agent Helm upgrade ai-support-bot on GKE"
-	@echo "  deploy       build-push + deploy both (full local deploy)"
-	@echo "  deploy-bad   Trigger KV cache regression (maxModelLen=16384, maxNumSeqs=24)"
-	@echo "  deploy-good  Revert to baseline config (maxModelLen=8192, maxNumSeqs=12)"
+	@echo "  deploy-vllm           Helm upgrade vLLM on GKE (baseline config)"
+	@echo "  deploy-agent          Helm upgrade ai-support-bot on GKE"
+	@echo "  deploy                build-push + deploy both (full local deploy)"
+	@echo "  deploy-bad            Trigger KV cache regression (maxModelLen=16384, maxNumSeqs=24)"
+	@echo "  deploy-good           Revert to baseline config (maxModelLen=8192, maxNumSeqs=12)"
+	@echo "  deploy-hyperstack-vllm Helm upgrade vLLM on Hyperstack (Phi-3-mini, A4000)"
 	@echo ""
 	@echo "Observability:"
 	@echo "  logs         Tail vLLM logs from Cloud Logging"
@@ -128,6 +130,13 @@ deploy-good:
 		--set vllm.maxNumSeqs=12 \
 		--wait
 
+deploy-hyperstack-vllm:
+	KUBECONFIG=hyperstack/kubeconfig.yaml helm upgrade --install vllm helm/vllm \
+		--namespace vllm \
+		--create-namespace \
+		--set nodeSelector=null \
+		-f hyperstack/vllm-values.yaml
+
 deploy-agent: _require-project
 	helm upgrade --install ai-support-bot helm/ai-support-bot \
 		--namespace ai-support-bot \
@@ -157,6 +166,10 @@ logs-kv:
 status:
 	kubectl get pods -n vllm
 	kubectl get pods -n ai-support-bot
+
+status-hyperstack:
+	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl get pods -n vllm
+	KUBECONFIG=hyperstack/kubeconfig.yaml kubectl get pods -n ai-support-bot 2>/dev/null || true
 
 # ── Internal ──────────────────────────────────────────────────────────────────
 

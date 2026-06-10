@@ -6,8 +6,19 @@ image:
 model:
   name: "meta-llama/Llama-3.1-8B-Instruct"
 
+nodeSelector:
+  cloud.google.com/gke-accelerator: nvidia-tesla-t4
+
+extraTolerations:
+  - key: "cloud.google.com/gke-accelerator"
+    value: "nvidia-tesla-t4"
+    effect: "NoSchedule"
+  - key: "cloud.google.com/machine-family"
+    operator: "Exists"
+    effect: "NoSchedule"
+
 vllm:
-  # Safe baseline for L4 24GB — do not raise both together (KV cache saturation)
+  # Safe baseline for T4 16GB — float16 fits; do not raise both together (KV cache saturation)
   maxModelLen: 8192
   maxNumSeqs: 12
   gpuMemoryUtilization: "0.90"

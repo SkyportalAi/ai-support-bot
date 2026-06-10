@@ -48,3 +48,27 @@ resource "google_project_iam_member" "cicd_container_developer" {
   role    = "roles/container.developer"
   member  = "serviceAccount:${google_service_account.cicd.email}"
 }
+
+# GKE Autopilot NAP requires the Compute Engine default SA to have these roles
+# so it can bootstrap nodes (write logs, push metrics, pull images).
+# Without them every GPU node creation returns a generic "Internal error".
+locals {
+  compute_default_sa = "${data.google_project.project.number}-compute@developer.gserviceaccount.com"
+  nap_roles = toset([
+    "roles/logging.logWriter",
+    "roles/monitoring.metricWriter",
+    "roles/monitoring.viewer",
+    "roles/storage.objectViewer",
+  ])
+}
+
+data "google_project" "project" {
+  project_id = var.project_id
+}
+
+resource "google_project_iam_member" "compute_sa_nap" {
+  for_each = local.nap_roles
+  project  = var.project_id
+  role     = each.value
+  member   = "serviceAccount:${local.compute_default_sa}"
+}

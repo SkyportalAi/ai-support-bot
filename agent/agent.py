@@ -44,7 +44,6 @@ class SupportAgent:
                 model=self._model,
                 messages=self._messages,
                 tools=TOOL_SCHEMAS,
-                tool_choice="auto",
             )
 
             msg = response.choices[0].message

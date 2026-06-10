@@ -2,8 +2,7 @@
 # Synthetic load generator for the KV cache saturation demo.
 #
 # Fires CONCURRENCY parallel /chat requests in a loop until stopped.
-# Each request uses a unique session_id and a long support question
-# to maximise KV block consumption per request.
+# Streams vLLM KV cache metrics alongside load output in real time.
 #
 # Usage:
 #   bash scripts/load.sh              # defaults: 16 parallel, localhost:8080
@@ -14,6 +13,7 @@ set -euo pipefail
 
 AGENT_URL="${AGENT_URL:-http://localhost:8080}"
 CONCURRENCY="${CONCURRENCY:-16}"
+KUBECONFIG="${KUBECONFIG:-hyperstack/kubeconfig.yaml}"
 ROUND=0
 
 MESSAGES=(
@@ -43,14 +43,29 @@ fire_one() {
   end=$(date +%s%3N)
   elapsed=$(( end - start ))
 
-  printf "[%s] session=%-36s status=%s latency=%dms\n" \
-    "$(date +%H:%M:%S)" "$session_id" "$status" "$elapsed"
+  printf "[load] session=%-36s status=%s latency=%dms\n" \
+    "$session_id" "$status" "$elapsed"
 }
 
 export -f fire_one
 export AGENT_URL MESSAGES
 
+# Stream KV cache metrics from Hyperstack in the background, prefixed with [kv]
+KUBECONFIG="$KUBECONFIG" kubectl logs -n vllm -l app=vllm -f --tail=0 2>/dev/null \
+  | grep --line-buffered "GPU KV cache" \
+  | sed -u 's/^.*Avg prompt throughput/[kv] throughput/' \
+  | sed -u 's/GPU KV cache usage:/  gpu_kv=/' \
+  | sed -u 's/CPU KV cache usage:/  cpu_kv=/' \
+  | sed -u 's/Running:/  running=/' \
+  | sed -u 's/Swapped:/  swapped=/' \
+  | sed -u 's/Pending:/  pending=/' \
+  | sed -u 's/Avg generation throughput:/  gen=/' &
+KV_PID=$!
+
+trap "kill $KV_PID 2>/dev/null; exit" INT TERM
+
 echo "Load generator starting — target: $AGENT_URL, concurrency: $CONCURRENCY"
+echo "KV metrics streaming from Hyperstack vLLM"
 echo "Press Ctrl+C to stop."
 echo ""
 

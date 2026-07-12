@@ -106,11 +106,24 @@ TOOL_SCHEMAS = [
 
 
 def dispatch(name: str, arguments: str) -> str:
-    args = json.loads(arguments)
+    try:
+        args = json.loads(arguments)
+    except json.JSONDecodeError as e:
+        return json.dumps({"error": f"Malformed tool arguments for '{name}': {e}"})
+
     if name == "search_knowledge_base":
-        return json.dumps(search_knowledge_base(**args))
-    if name == "get_ticket_status":
-        return json.dumps(get_ticket_status(**args))
-    if name == "escalate_to_human":
-        return json.dumps(escalate_to_human(**args))
-    raise ValueError(f"Unknown tool: {name}")
+        handler = search_knowledge_base
+    elif name == "get_ticket_status":
+        handler = get_ticket_status
+    elif name == "escalate_to_human":
+        handler = escalate_to_human
+    else:
+        return json.dumps({"error": f"Unknown tool: {name}"})
+
+    try:
+        return json.dumps(handler(**args))
+    except TypeError as e:
+        # A local model can omit required args, add unexpected ones, or pass
+        # the wrong shape — return the mismatch as a tool result so the LLM
+        # can retry with corrected arguments instead of crashing the request.
+        return json.dumps({"error": f"Invalid arguments for '{name}': {e}"})
